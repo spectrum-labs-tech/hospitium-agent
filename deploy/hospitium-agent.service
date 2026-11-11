@@ -1,0 +1,34 @@
+[Unit]
+Description=Hospitium TV management agent
+Documentation=https://github.com/spectrum-labs-tech/hospitium-agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=hospitium
+Group=hospitium
+# The ADB key lives in $HOME/.android; keep it in the persistent state dir so
+# TVs do not prompt again after restarts or OS upgrades.
+Environment=HOME=/var/lib/hospitium-agent
+Environment=HOSPITIUM_AGENT_STATE_DIR=/var/lib/hospitium-agent
+ExecStart=/usr/local/bin/hospitium-agent run --adb /usr/bin/adb
+Restart=always
+RestartSec=10
+
+# Hardening: the agent only needs its state dir and the network.
+StateDirectory=hospitium-agent
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+version: "3"
+
+# Every repeated command lives here (`task --list`).
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  LDFLAGS: -s -w -X main.version={{.VERSION}}
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    desc: Run vet and unit tests
+    cmds: [task: vet, task: test]
+
+  check:
+    desc: Everything CI checks (fmt, vet, lint incl. context checks, tests, tidy, SPDX headers)
+    cmds:
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - task: vet
+      - task: lint
+      - task: test
+      - go mod tidy -diff
+      - task: spdx
+
+  build:
+    desc: Build the agent for this machine into bin/
+    cmd: go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/ ./cmd/hospitium-agent
+
+  build:pi:
+    desc: Build a static ARMv6 binary (runs on every Raspberry Pi, original through current) into bin/
+    env: { GOOS: linux, GOARCH: arm, GOARM: "6" }
+    cmd: go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/hospitium-agent-linux-armv6 ./cmd/hospitium-agent
+
+  vet:
+    cmd: go vet ./...
+  lint:
+    desc: golangci-lint (contextcheck, noctx, sloglint, gosec, ...)
+    cmd: golangci-lint run ./...
+  fmt:
+    cmd: gofmt -w -s .
+  test:
+    desc: Unit tests (no network, no hardware)
+    cmd: go test -count=1 ./...
+  vuln:
+    cmd: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  spdx:
+    desc: Fail if a Go file lacks the SPDX header
+    cmd: |
+      missing=$(grep -L 'SPDX-License-Identifier: Apache-2.0' $(git ls-files -co --exclude-standard '*.go') || true)
+      if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi

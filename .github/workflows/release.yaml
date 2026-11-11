@@ -1,0 +1,54 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish static agent binaries for every Raspberry Pi
+# generation (ARMv6 covers the original Pi and Pi Zero) with SHA-256 checksums.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for t in linux/arm/6:armv6 linux/arm/7:armv7 linux/arm64/:arm64 linux/amd64/:amd64; do
+            spec=${t%%:*}; label=${t##*:}
+            IFS=/ read -r os arch arm <<<"$spec"
+            out="build/hospitium-agent_${VERSION}_${os}_${label}"
+            mkdir -p "$out"
+            GOOS=$os GOARCH=$arch GOARM=$arm CGO_ENABLED=0 go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" -o "$out/" ./cmd/hospitium-agent
+            cp LICENSE README.md deploy/hospitium-agent.service "$out/"
+            tar -C build -czf "dist/$(basename "$out").tar.gz" "$(basename "$out")"
+          done
+          (cd dist && sha256sum * > checksums.txt)
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${{ github.ref_name }}" in v0.*|*-*) prerelease="--prerelease";; esac
+          gh release create "${{ github.ref_name }}" dist/* --verify-tag --generate-notes $prerelease
+
+  notify:
+    needs: [binaries]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: spectrum-labs-tech/.github/actions/discord-notify@main
+        with:
+          webhook: ${{ secrets.DISCORD_CICD_WEBHOOK }}
+          status: failure

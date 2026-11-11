@@ -1,0 +1,26 @@
+{
+  "poll_interval_seconds": 60,
+  "devices": [
+    {
+      "device_id": 1,
+      "name": "Living room TV",
+      "adb_address": "10.0.50.21:5555",
+      "generation": 1,
+      "spec": {
+        "launcher": {
+          "package_name": "tech.spectrumlabs.hospitium.launcher",
+          "version_code": 1,
+          "apk_url": "https://downloads.example/hospitium-launcher-1.apk",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "activation": "none",
+          "stock_launchers": ["com.google.android.apps.tv.launcherx"]
+        },
+        "required_apps": [
+          { "package_name": "com.netflix.ninja" },
+          { "package_name": "com.google.android.youtube.tv" }
+        ],
+        "settings": [{ "namespace": "secure", "key": "screensaver_enabled", "value": "0" }]
+      }
+    }
+  ]
+}
