@@ -162,12 +162,8 @@ func (a *ADB) DisabledPackages(ctx context.Context) (map[string]bool, error) {
 	return res, nil
 }
 
-func (a *ADB) Install(ctx context.Context, apk APK, allowDowngrade bool) error {
-	args := []string{"-s", a.Addr, "install", "-r"}
-	if allowDowngrade {
-		args = append(args, "-d")
-	}
-	out, err := a.run(ctx, 5*time.Minute, append(args, apk.Path)...)
+func (a *ADB) Install(ctx context.Context, apk APK) error {
+	out, err := a.run(ctx, 5*time.Minute, "-s", a.Addr, "install", "-r", apk.Path)
 	if strings.Contains(out, "INSTALL_FAILED_VERSION_DOWNGRADE") {
 		return ErrDowngrade
 	}
@@ -176,17 +172,6 @@ func (a *ADB) Install(ctx context.Context, apk APK, allowDowngrade bool) error {
 	}
 	if !strings.Contains(out, "Success") {
 		return fmt.Errorf("install %s: %s", apk.PackageName, out)
-	}
-	return nil
-}
-
-func (a *ADB) Uninstall(ctx context.Context, pkg string) error {
-	out, err := a.run(ctx, time.Minute, "-s", a.Addr, "uninstall", pkg)
-	if err != nil {
-		return err
-	}
-	if !strings.Contains(out, "Success") {
-		return fmt.Errorf("uninstall %s: %s", pkg, out)
 	}
 	return nil
 }

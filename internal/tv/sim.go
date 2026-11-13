@@ -19,7 +19,6 @@ type SimTV struct {
 	// Fault injection (not persisted).
 	FailInstalls     int  // fail the next N installs
 	OfflineConnects  int  // report unreachable for the next N connects (e.g. reboot)
-	RejectDowngrade  bool // behave like a non-debuggable app on a user build
 	IgnoreHomeSetter bool // OEM that silently ignores set-home-activity
 	Calls            []string
 }
@@ -121,7 +120,9 @@ func (s *SimTV) DisabledPackages(ctx context.Context) (map[string]bool, error) {
 	return res, nil
 }
 
-func (s *SimTV) Install(ctx context.Context, apk APK, allowDowngrade bool) error {
+// Install models `adb install -r`: replaces in place and keeps app data
+// (AppData is untouched); a lower versionCode is refused, as Android does.
+func (s *SimTV) Install(ctx context.Context, apk APK) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.call("install " + apk.PackageName); err != nil {
@@ -131,23 +132,10 @@ func (s *SimTV) Install(ctx context.Context, apk APK, allowDowngrade bool) error
 		s.FailInstalls--
 		return fmt.Errorf("install %s: Failure [INSTALL_FAILED_INTERNAL_ERROR] (simulated)", apk.PackageName)
 	}
-	if cur, ok := s.Packages[apk.PackageName]; ok && cur > apk.VersionCode && (!allowDowngrade || s.RejectDowngrade) {
+	if cur, ok := s.Packages[apk.PackageName]; ok && cur > apk.VersionCode {
 		return ErrDowngrade
 	}
 	s.Packages[apk.PackageName] = apk.VersionCode
-	return nil
-}
-
-func (s *SimTV) Uninstall(ctx context.Context, pkg string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.call("uninstall " + pkg); err != nil {
-		return err
-	}
-	delete(s.Packages, pkg)
-	if s.HomeOverride != "" && pkgOf(s.HomeOverride) == pkg {
-		s.HomeOverride = ""
-	}
 	return nil
 }
 

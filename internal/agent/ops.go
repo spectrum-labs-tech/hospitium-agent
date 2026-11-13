@@ -120,16 +120,24 @@ func executeOperation(ctx context.Context, dev tv.Device, op v1.Operation, now f
 	}
 }
 
-// reinstallLauncher is handled by the agent loop since it needs the spec.
+// reinstallLauncher is handled by the agent loop since it needs the spec. It
+// re-installs the desired build IN PLACE (`install -r`), which repairs a
+// damaged install while keeping the launcher's data, pairing included. It
+// never uninstalls, and refuses if the TV has a newer version (roll forward).
 func reinstallLauncher(ctx context.Context, dev tv.Device, spec v1.DeviceSpec, art Artifacts) error {
 	if spec.Launcher == nil {
 		return errors.New("no launcher in desired state")
 	}
 	l := spec.Launcher
-	if err := dev.Uninstall(ctx, l.PackageName); err != nil && !strings.Contains(err.Error(), "not installed") {
+	versions, err := dev.PackageVersions(ctx, []string{l.PackageName})
+	if err != nil {
 		return err
 	}
-	_, err := ensurePackage(ctx, dev, art, l.PackageName, l.VersionCode, l.APKURL, l.SHA256, true, map[string]int64{})
+	if cur, ok := versions[l.PackageName]; ok && cur > l.VersionCode {
+		return newerInstalled(l.PackageName, cur, l.VersionCode)
+	}
+	// An empty version map makes ensurePackage install even when the version matches.
+	_, err = ensurePackage(ctx, dev, art, l.PackageName, l.VersionCode, l.APKURL, l.SHA256, true, map[string]int64{})
 	return err
 }
 

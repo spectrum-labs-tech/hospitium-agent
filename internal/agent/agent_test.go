@@ -164,29 +164,100 @@ func TestReconcileInstallsActivatesAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestLauncherUpgradeAndRollback(t *testing.T) {
+func TestLauncherUpgradeKeepsData(t *testing.T) {
 	h := newHarness(t)
 	h.agent.Tick(context.Background())
+	h.tv.SignIn(launcherPkg) // the launcher paired: its data holds the device token
 
 	h.setSpec(2, spec(2))
 	h.now = h.now.Add(time.Minute)
 	h.agent.Tick(context.Background())
-	if st := h.api.lastStatus(t); st.ObservedGeneration != 2 || st.Packages[launcherPkg] != 2 {
+	if st := h.api.lastStatus(t); st.ObservedGeneration != 2 || st.Packages[launcherPkg] != 2 || !st.Compliant {
 		t.Fatalf("upgrade not applied: %+v", st)
 	}
+	if !h.tv.Snapshot().AppData[launcherPkg] {
+		t.Fatal("upgrade wiped the launcher's data")
+	}
+}
 
-	// Roll back to v1 on a device that refuses `install -d`.
-	h.tv.RejectDowngrade = true
+// Rolling back would mean uninstalling (Android refuses `install -r` to a lower
+// versionCode on user builds), which deletes the launcher's pairing. The agent
+// refuses, touches nothing, and says how to roll forward instead.
+func TestLauncherNeverDowngrades(t *testing.T) {
+	h := newHarness(t)
+	h.setSpec(1, spec(2))
+	h.agent.Tick(context.Background())
+	h.tv.SignIn(launcherPkg)
+
 	h.tv.Calls = nil
-	h.setSpec(3, spec(1))
+	h.setSpec(2, spec(1))
 	h.now = h.now.Add(time.Minute)
 	h.agent.Tick(context.Background())
+
 	st := h.api.lastStatus(t)
-	if st.ObservedGeneration != 3 || st.Packages[launcherPkg] != 1 || !st.Compliant {
-		t.Fatalf("rollback failed: %+v", st)
+	if st.Compliant || st.Packages[launcherPkg] != 2 || st.ObservedGeneration == 2 {
+		t.Fatalf("expected a refused downgrade: %+v", st)
 	}
-	if !contains(h.tv.Calls, "uninstall "+launcherPkg) {
-		t.Fatalf("expected uninstall+install rollback, calls=%v", h.tv.Calls)
+	if !strings.Contains(st.LastError, "never downgrades") || !strings.Contains(st.LastError, "versionCode above 2") {
+		t.Fatalf("error doesn't explain rolling forward: %q", st.LastError)
+	}
+	for _, c := range h.tv.Calls {
+		if strings.HasPrefix(c, "install") || strings.HasPrefix(c, "uninstall") {
+			t.Fatalf("downgrade attempted: %v", h.tv.Calls)
+		}
+	}
+	if !h.tv.Snapshot().AppData[launcherPkg] {
+		t.Fatal("launcher data lost")
+	}
+
+	// Rolling forward: the old build republished with a higher versionCode.
+	h.setSpec(3, spec(3))
+	h.now = h.now.Add(time.Hour) // past any backoff
+	h.agent.Tick(context.Background())
+	if st := h.api.lastStatus(t); !st.Compliant || st.Packages[launcherPkg] != 3 || !h.tv.Snapshot().AppData[launcherPkg] {
+		t.Fatalf("roll forward failed: %+v", st)
+	}
+}
+
+func TestReinstallLauncherKeepsDataAndNeverUninstalls(t *testing.T) {
+	h := newHarness(t)
+	h.agent.Tick(context.Background())
+	h.tv.SignIn(launcherPkg)
+
+	h.tv.Calls = nil
+	h.api.desired.Operations = []v1.Operation{{ID: "op-ri", DeviceID: 7, Type: v1.OpReinstallLauncher, Attempt: 1, ExpiresAt: h.now.Add(time.Hour)}}
+	h.now = h.now.Add(time.Minute)
+	h.agent.Tick(context.Background())
+
+	res := h.api.opResults["op-ri"]
+	if len(res) == 0 || res[0].Status != v1.OpStatusSucceeded {
+		t.Fatalf("reinstall failed: %+v", res)
+	}
+	if countPrefix(h.tv.Calls, "install "+launcherPkg) != 1 || countPrefix(h.tv.Calls, "uninstall") != 0 {
+		t.Fatalf("expected one in-place install and no uninstall, calls=%v", h.tv.Calls)
+	}
+	if !h.tv.Snapshot().AppData[launcherPkg] {
+		t.Fatal("reinstall wiped the launcher's pairing")
+	}
+}
+
+func TestReinstallLauncherRefusesWhenNewerIsInstalled(t *testing.T) {
+	h := newHarness(t)
+	h.setSpec(1, spec(2))
+	h.agent.Tick(context.Background())
+
+	h.setSpec(2, spec(1))
+	h.tv.Calls = nil
+	h.api.desired.Operations = []v1.Operation{{ID: "op-ri", DeviceID: 7, Type: v1.OpReinstallLauncher, Attempt: 1, ExpiresAt: h.now.Add(time.Hour)}}
+	h.now = h.now.Add(time.Minute)
+	h.agent.Tick(context.Background())
+
+	res := h.api.opResults["op-ri"]
+	if len(res) == 0 || res[0].Status != v1.OpStatusFailed || res[0].Retryable {
+		t.Fatalf("expected a non-retryable failure: %+v", res)
+	}
+	if countPrefix(h.tv.Calls, "install") != 0 {
+		t.Fatalf("installed anyway: %v", h.tv.Calls)
 	}
 }
 

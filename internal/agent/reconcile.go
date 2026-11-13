@@ -158,12 +158,26 @@ func managedPackages(spec v1.DeviceSpec) []string {
 	return out
 }
 
+// ErrNewerInstalled: the TV has a newer version than desired. The agent never
+// downgrades: Android only allows it by uninstalling (or `install -d` on
+// debuggable builds), and uninstalling deletes the app's data, including the
+// launcher's one-time device token. Roll forward instead: publish the old
+// build again with a higher versionCode.
+var ErrNewerInstalled = errors.New("installed version is newer than desired; the agent never downgrades")
+
+func newerInstalled(pkg string, cur, want int64) error {
+	return fmt.Errorf("%s: v%d installed, v%d desired: %w (publish the wanted build with a versionCode above %d)", pkg, cur, want, ErrNewerInstalled, cur)
+}
+
 // ensurePackage returns ok=true when pkg is installed at the wanted version
 // (exact when exact, otherwise >= want).
 func ensurePackage(ctx context.Context, dev tv.Device, art Artifacts, pkg string, want int64, url, sum string, exact bool, versions map[string]int64) (bool, error) {
 	cur, installed := versions[pkg]
 	if installed && (cur == want || (!exact && cur >= want)) {
 		return true, nil
+	}
+	if installed && cur > want {
+		return false, newerInstalled(pkg, cur, want)
 	}
 	if url == "" {
 		if !installed {
@@ -176,15 +190,11 @@ func ensurePackage(ctx context.Context, dev tv.Device, art Artifacts, pkg string
 		return false, fmt.Errorf("fetch %s: %w", pkg, err)
 	}
 	apk := tv.APK{Path: path, PackageName: pkg, VersionCode: want}
-	downgrade := installed && cur > want
-	err = dev.Install(ctx, apk, downgrade)
+	err = dev.Install(ctx, apk)
 	if errors.Is(err, tv.ErrDowngrade) {
-		// Rollback path for non-debuggable builds: uninstall then install.
-		// Safe for the launcher because its local data is only a cache.
-		if uerr := dev.Uninstall(ctx, pkg); uerr != nil {
-			return false, fmt.Errorf("rollback %s: uninstall: %w", pkg, uerr)
-		}
-		err = dev.Install(ctx, apk, false)
+		// The versionCode on the TV is newer than the artifact's, though the
+		// desired state said otherwise (a mislabeled artifact).
+		return false, newerInstalled(pkg, cur, want)
 	}
 	if err != nil {
 		return false, fmt.Errorf("install %s v%d: %w", pkg, want, err)

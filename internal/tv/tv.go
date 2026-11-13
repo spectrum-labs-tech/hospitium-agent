@@ -17,7 +17,8 @@ var (
 	// ErrUnauthorized: the TV answered but has not accepted this agent's ADB
 	// key. Someone must accept the prompt on screen with the remote.
 	ErrUnauthorized = errors.New("adb key not authorized on tv")
-	// ErrDowngrade: install refused because the installed version is newer.
+	// ErrDowngrade: the TV refused an install because the installed version is
+	// newer. The agent never downgrades (see Device.Install).
 	ErrDowngrade = errors.New("install refused: version downgrade")
 )
 
@@ -47,8 +48,11 @@ type Device interface {
 	// Missing packages are absent from the map.
 	PackageVersions(ctx context.Context, pkgs []string) (map[string]int64, error)
 	DisabledPackages(ctx context.Context) (map[string]bool, error)
-	Install(ctx context.Context, apk APK, allowDowngrade bool) error
-	Uninstall(ctx context.Context, pkg string) error
+	// Install installs or replaces an APK in place (`install -r`), keeping the
+	// app's data. There is deliberately no downgrade and no uninstall: both
+	// destroy app data (the launcher's pairing among it), so a bad release is
+	// fixed by rolling FORWARD to a build with a higher versionCode.
+	Install(ctx context.Context, apk APK) error
 	GetSetting(ctx context.Context, namespace, key string) (string, error)
 	PutSetting(ctx context.Context, namespace, key, value string) error
 	// HomeActivity returns the component that currently resolves for HOME.

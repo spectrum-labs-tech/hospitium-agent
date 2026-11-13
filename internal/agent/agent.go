@@ -7,6 +7,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"math/rand/v2"
@@ -223,7 +224,8 @@ func (a *Agent) processOperations(ctx context.Context, ops []v1.Operation, devic
 				} else if err := dev.Connect(ctx); err != nil {
 					res.Status, res.Message, res.Retryable = v1.OpStatusFailed, err.Error(), true
 				} else if err := reinstallLauncher(ctx, dev, assign.Spec, a.Artifacts); err != nil {
-					res.Status, res.Message, res.Retryable = v1.OpStatusFailed, err.Error(), true
+					// A newer launcher on the TV won't change by retrying.
+					res.Status, res.Message, res.Retryable = v1.OpStatusFailed, err.Error(), !errors.Is(err, ErrNewerInstalled)
 				} else {
 					res.Status, res.Message = v1.OpStatusSucceeded, "launcher reinstalled"
 				}

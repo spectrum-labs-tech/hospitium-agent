@@ -71,7 +71,7 @@ To make systemd use it, add `--local /var/lib/hospitium-agent/desired.json` to `
 | Situation | Fix |
 |---|---|
 | Stock home screen needed back | Set `activation: none`. The agent re-enables the stock launcher. Manually: `adb shell pm enable com.google.android.apps.tv.launcherx` |
-| Bad launcher release | Set the desired version back. The agent downgrades with `install -r -d`, falling back to uninstall and reinstall |
+| Bad launcher release | **Roll forward**: publish the last good build again with a higher versionCode and set that as desired. The agent never downgrades or uninstalls, because both delete the launcher's data, including its pairing. If the desired version is lower than the installed one, the device reports non-compliant with an error saying so, and nothing on the TV changes |
 | Pi replaced | Enroll the new Pi and reassign the TVs, then accept the ADB prompt on each TV (new key) |
 | TV lost ADB access after an OTA update | Device shows `unreachable` or `unauthorized`. Re-enable network debugging and accept the prompt |
 
@@ -108,7 +108,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 The tests cover:
 
 - idempotent reconciliation
-- upgrade and rollback
+- upgrades that keep app data, and refusing to downgrade (roll forward only)
 - install failure with backoff
 - TV reboot
 - ADB unauthorized
