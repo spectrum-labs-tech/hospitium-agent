@@ -21,6 +21,14 @@ A Raspberry Pi agent that keeps Google TVs at a desired state over ADB, pulled f
 - **Every Go file starts with** `// SPDX-License-Identifier: Apache-2.0`.
 - **Dependencies:** standard library only today; justify any new module.
 
+## Releases
+
+- **Only through `task release BUMP=patch|minor|major`, and only when the maintainer asks.** Never
+  `git tag` or `git push --tags` by hand. A tag publishes binaries that hubs in the field install.
+- The task tags the tip of `origin/main` after CI passed on it and the commit builds from published
+  modules only. Release the protocol first (its own `task release`), then require that tag here.
+- `release:next` is the only copy of the version arithmetic; `task release:check` self-tests it.
+
 ## Commands
 
 All recurring commands live in `Taskfile.yaml` (`task --list`). `task check` must pass with no network.

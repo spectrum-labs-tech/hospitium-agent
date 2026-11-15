@@ -132,6 +132,11 @@ task build:pi # static ARMv6 binary for every Raspberry Pi
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+**Releases** are cut with `task release BUMP=patch|minor|major`, never by tagging by hand. The task
+tags the tip of `origin/main`, never a local commit. It does so only after CI has passed on that
+exact commit and the commit builds from published modules alone (no `replace`, no untagged protocol
+version). The tag publishes the binaries. `DRY_RUN=1` runs every check without tagging.
+
 The tests cover:
 
 - idempotent reconciliation
