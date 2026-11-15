@@ -40,10 +40,13 @@ The agent has no arbitrary shell feature. Its `tv.Device` interface is a closed 
 ```bash
 sudo apt-get install -y adb
 sudo useradd --system --home /var/lib/hospitium-agent --shell /usr/sbin/nologin hospitium
-# One static ARMv6 binary runs on every Pi from the original Model B to the 3B (and later):
-GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hospitium-agent ./cmd/hospitium-agent
+# Pick the build for the Pi: armv6 (Pi 1, Zero), armv7 (Pi 2/3/Zero 2 W on 32-bit Pi OS), arm64 (64-bit Pi OS).
+V=v0.1.0 ARCH=armv7
+curl -fsSLO https://github.com/spectrum-labs-tech/hospitium-agent/releases/download/$V/hospitium-agent_${V}_linux_${ARCH}.tar.gz
+curl -fsSL https://github.com/spectrum-labs-tech/hospitium-agent/releases/download/$V/checksums.txt | grep "_linux_${ARCH}.tar.gz" | sha256sum -c -
+tar xzf hospitium-agent_${V}_linux_${ARCH}.tar.gz && cd hospitium-agent_${V}_linux_${ARCH}
 sudo install -m 0755 hospitium-agent /usr/local/bin/
-sudo install -m 0644 deploy/hospitium-agent.service /etc/systemd/system/
+sudo install -m 0644 hospitium-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl start hospitium-agent   # creates the state dir
 sudo systemctl stop hospitium-agent
 ```
