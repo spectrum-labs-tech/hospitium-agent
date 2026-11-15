@@ -5,6 +5,7 @@
 //	hospitium-agent enroll --server https://hospitium.example --token <enrollment-token>
 //	hospitium-agent run
 //	hospitium-agent run --local /etc/hospitium-agent/desired.json   (standalone, no control plane)
+//	hospitium-agent check --tv 10.0.50.21:5555 [--launcher-apk ... --reboots 5 --clear com.netflix.ninja --yes]
 //	hospitium-agent version
 package main
 
@@ -46,6 +47,8 @@ func main() {
 		err = enroll(ctx, os.Args[2:])
 	case "run":
 		err = run(ctx, os.Args[2:])
+	case "check":
+		err = checkTV(ctx, os.Args[2:], os.Stdout)
 	case "version":
 		fmt.Println(version)
 	default:
@@ -59,7 +62,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: hospitium-agent enroll|run|version [flags]")
+	fmt.Fprintln(os.Stderr, "usage: hospitium-agent enroll|run|check|version [flags]")
 	os.Exit(2)
 }
 

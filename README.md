@@ -87,8 +87,28 @@ To make systemd use it, add `--local /var/lib/hospitium-agent/desired.json` to `
 ```
 hospitium-agent enroll --server URL --token TOKEN [--state-dir DIR]
 hospitium-agent run [--local FILE] [--adb PATH] [--interval 45s] [--once] [--simulate] [--debug]
+hospitium-agent check --tv HOST:PORT [--launcher-apk FILE] [--strategy auto] [--reboots N] [--clear PKG,PKG] [--out FILE] [--yes]
 hospitium-agent version
 ```
+
+### Checking a TV before it goes into service
+
+`check` runs the hardware test protocol against one TV and prints what it observed:
+
+```bash
+hospitium-agent check --tv 10.0.50.21:5555                          # read-only: connect, model, build
+hospitium-agent check --tv 10.0.50.21:5555 --yes   --launcher-apk launcher.apk --reboots 5   --clear com.netflix.ninja,com.google.android.youtube.tv --out tv1.json
+```
+
+It installs and activates the launcher (`--strategy auto` tries `home_activity`, then
+`disable_stock`), reboots the TV and checks that ADB returns without a prompt and that HOME stays on
+the launcher, then clears each app and verifies the clear. Results use the protocol's capability
+observations, labeled `verified` on real hardware and `simulated` with `--simulate`. The report ends
+with the checks only a person can do, like pressing HOME from inside an app or confirming an app is
+back at its sign-in screen.
+
+Anything that changes the TV needs `--yes`. It reboots the TV and signs apps out, so **never run it
+while a guest is staying**.
 
 `--simulate` manages in-memory simulated TVs, which persist to `simulated-tvs.json` in the state dir, so you can develop and demo without hardware. Simulated behavior is modeled on documented Android behavior and **is not evidence of real-device behavior**.
 
