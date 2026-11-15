@@ -51,6 +51,18 @@ type deviceState struct {
 	failures int
 	next     time.Time
 	last     v1.DeviceStatus
+	// rebooted: the agent rebooted this TV while the launcher was active, and
+	// no pass has reached it since.
+	rebooted bool
+}
+
+func launcherActive(st v1.DeviceStatus) bool {
+	for _, c := range st.Conditions {
+		if c.Type == "LauncherActive" {
+			return c.Status == "True"
+		}
+	}
+	return false
 }
 
 const desiredCacheFile = "desired-state.json"
@@ -152,7 +164,10 @@ func (a *Agent) Tick(ctx context.Context) time.Duration {
 			statuses = append(statuses, st)
 			continue
 		}
-		st := reconcileDevice(ctx, a.Dial(d.ADBAddress), d, a.Artifacts, now)
+		st := reconcileDevice(ctx, a.Dial(d.ADBAddress), d, a.Artifacts, now, ds.rebooted)
+		if st.Reachable && st.Authorized {
+			ds.rebooted = false
+		}
 		if st.LastError != "" || !st.Reachable {
 			ds.failures++
 			ds.next = now.Add(backoff(ds.failures))
@@ -235,6 +250,9 @@ func (a *Agent) processOperations(ctx context.Context, ops []v1.Operation, devic
 			}
 			if op.Type == v1.OpReboot && res.Status == v1.OpStatusSucceeded {
 				skip[op.DeviceID] = true
+				if ds := a.devs[op.DeviceID]; ds != nil && launcherActive(ds.last) {
+					ds.rebooted = true
+				}
 			}
 			a.Log.InfoContext(ctx, "operation executed", "op", op.ID, "type", op.Type, "device", op.DeviceID, "status", res.Status, "msg", res.Message)
 			rec.State, rec.Result, rec.UpdatedAt = "done", &res, a.Now()

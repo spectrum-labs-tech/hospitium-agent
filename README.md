@@ -24,6 +24,13 @@ Every 30–60 seconds, with jitter, the agent:
 3. **Executes one-time operations** such as clearing streaming-app data at checkout, rebooting, or running diagnostics. Each operation has a durable execution record, so a finished operation is never repeated because a report was lost or the agent restarted. Expired operations are refused.
 4. **Reports** device health, versions, conditions and operation results.
 
+Each report also carries the TV's facts (model, build fingerprint, where HOME resolves) and
+**capability observations**: only what the agent saw happen on that TV, never what a model is
+expected to do. Examples: activation took effect or was ignored, an install verified, an app's data
+cleared and verified (one result per package), HOME still resolved to the launcher after a reboot.
+A refused command is reported as unsupported; an unreachable TV proves nothing either way.
+Observations from the simulator are labeled `simulated`, never `verified`.
+
 When the control plane is unreachable, the agent keeps reconciling from its cached desired state, but it never runs one-time operations from the cache. Failing TVs back off exponentially (15s up to 10 minutes) without blocking the other TVs.
 
 The agent has no arbitrary shell feature. Its `tv.Device` interface is a closed list of actions.

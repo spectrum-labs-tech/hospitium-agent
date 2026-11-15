@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	v1 "github.com/spectrum-labs-tech/hospitium-protocol/v1"
 )
 
 // ADB drives a TV through the platform `adb` binary (Debian package `adb`).
@@ -31,6 +33,9 @@ func NewADBDialer(bin string) Dialer {
 }
 
 func (a *ADB) Address() string { return a.Addr }
+
+// Driver names this driver in the protocol.
+func (a *ADB) Driver() string { return v1.DriverAndroidADB }
 
 func (a *ADB) run(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	if timeout == 0 {
@@ -229,7 +234,7 @@ func (a *ADB) ClearAppData(ctx context.Context, pkg string) error {
 		return err
 	}
 	if !strings.Contains(out, "Success") {
-		return fmt.Errorf("pm clear %s: %s", pkg, out)
+		return fmt.Errorf("pm clear %s: %s: %w", pkg, out, ErrRefused)
 	}
 	return nil
 }

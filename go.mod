@@ -2,4 +2,4 @@ module github.com/spectrum-labs-tech/hospitium-agent
 
 go 1.27.4
 
-require github.com/spectrum-labs-tech/hospitium-protocol v0.1.0
+require github.com/spectrum-labs-tech/hospitium-protocol v0.3.0

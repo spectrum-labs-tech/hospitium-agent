@@ -85,6 +85,9 @@ func executeOperation(ctx context.Context, dev tv.Device, op v1.Operation, now f
 			if err := dev.ClearAppData(ctx, pkg); err != nil {
 				res.Verification[pkg] = "clear_failed: " + err.Error()
 				failed = append(failed, pkg)
+				if errors.Is(err, tv.ErrRefused) {
+					res.Capabilities = append(res.Capabilities, observe(dev, v1.CapAppDataCleanup, pkg, v1.CapUnsupported, err.Error(), now()))
+				}
 				continue
 			}
 			ev, err := dev.VerifyCleared(ctx, pkg)
@@ -94,6 +97,7 @@ func executeOperation(ctx context.Context, dev tv.Device, op v1.Operation, now f
 				failed = append(failed, pkg)
 			} else {
 				res.Verification[pkg] = "cleared; " + res.Verification[pkg]
+				res.Capabilities = append(res.Capabilities, observe(dev, v1.CapAppDataCleanup, pkg, v1.CapSupported, "cleared and verified", now()))
 			}
 		}
 		if len(failed) > 0 {
@@ -105,6 +109,7 @@ func executeOperation(ctx context.Context, dev tv.Device, op v1.Operation, now f
 		if err := dev.Reboot(ctx); err != nil {
 			return finish(v1.OpStatusFailed, err.Error(), true)
 		}
+		res.Capabilities = append(res.Capabilities, observe(dev, v1.CapRemoteReboot, "", v1.CapSupported, "reboot accepted", now()))
 		return finish(v1.OpStatusSucceeded, "reboot issued", false)
 
 	case v1.OpDiagnostics:

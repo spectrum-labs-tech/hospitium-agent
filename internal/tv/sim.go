@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	v1 "github.com/spectrum-labs-tech/hospitium-protocol/v1"
 )
 
 // SimTV is an in-memory Google TV used by tests and `--simulate` mode.
@@ -20,7 +22,11 @@ type SimTV struct {
 	FailInstalls     int  // fail the next N installs
 	OfflineConnects  int  // report unreachable for the next N connects (e.g. reboot)
 	IgnoreHomeSetter bool // OEM that silently ignores set-home-activity
-	Calls            []string
+	ResetHomeOnBoot  bool // OEM that restores the stock launcher on every boot
+	// RefuseClear makes `pm clear` fail for these packages, as a TV whose
+	// firmware protects an app would.
+	RefuseClear map[string]bool
+	Calls       []string
 }
 
 // SimState is the persisted part of a simulated TV.
@@ -69,6 +75,9 @@ func (s *SimTV) call(name string) error {
 }
 
 func (s *SimTV) Address() string { return s.Addr }
+
+// Driver names this driver in the protocol.
+func (s *SimTV) Driver() string { return v1.DriverSimulator }
 
 func (s *SimTV) Connect(ctx context.Context) error {
 	s.mu.Lock()
@@ -236,6 +245,9 @@ func (s *SimTV) ClearAppData(ctx context.Context, pkg string) error {
 	if _, ok := s.Packages[pkg]; !ok {
 		return fmt.Errorf("pm clear %s: Failed (package not installed)", pkg)
 	}
+	if s.RefuseClear[pkg] {
+		return fmt.Errorf("pm clear %s: Failed: %w", pkg, ErrRefused)
+	}
 	delete(s.AppData, pkg)
 	return nil
 }
@@ -261,6 +273,10 @@ func (s *SimTV) Reboot(ctx context.Context) error {
 	}
 	s.Boots++
 	s.OfflineConnects = 1
+	if s.ResetHomeOnBoot {
+		s.HomeOverride = ""
+		s.Disabled = map[string]bool{}
+	}
 	return nil
 }
 

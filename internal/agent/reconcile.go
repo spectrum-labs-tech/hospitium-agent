@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,7 +26,12 @@ type Artifacts interface {
 
 // reconcileDevice drives one TV toward spec. It observes first and only acts
 // on differences, so a compliant TV sees read-only commands only.
-func reconcileDevice(ctx context.Context, dev tv.Device, a v1.DeviceAssignment, art Artifacts, now time.Time) v1.DeviceStatus {
+//
+// afterReboot is set on the first pass that reaches the TV after the agent
+// rebooted it while the launcher was active. That pass checks where HOME
+// resolves before re-applying activation, the only moment the agent can see
+// whether activation survives a reboot on its own.
+func reconcileDevice(ctx context.Context, dev tv.Device, a v1.DeviceAssignment, art Artifacts, now time.Time, afterReboot bool) v1.DeviceStatus {
 	st := v1.DeviceStatus{DeviceID: a.DeviceID, ReconciledAt: now}
 	spec := a.Spec
 
@@ -45,14 +51,30 @@ func reconcileDevice(ctx context.Context, dev tv.Device, a v1.DeviceAssignment, 
 	st.Reachable, st.Authorized = true, true
 	st.Conditions = append(st.Conditions, cond("Reachable", true, "Connected", ""))
 
-	if info, err := dev.Info(ctx); err == nil {
+	info, infoErr := dev.Info(ctx)
+	if infoErr == nil {
 		st.Model, st.Manufacturer, st.OSVersion, st.SDKLevel = info.Model, info.Manufacturer, info.OSVersion, info.SDKLevel
+		st.Capabilities = append(st.Capabilities, observe(dev, v1.CapHealthMonitoring, "", v1.CapSupported, "", now))
 	}
 
 	managed := managedPackages(spec)
 	versions, err := dev.PackageVersions(ctx, managed)
 	if err != nil {
 		return fail(st, err)
+	}
+	before := maps.Clone(versions)
+
+	if l := spec.Launcher; afterReboot && l != nil && activates(l) {
+		if _, installed := versions[l.PackageName]; installed {
+			if home, err := dev.HomeActivity(ctx); err == nil {
+				if strings.HasPrefix(home, l.PackageName+"/") {
+					st.Capabilities = append(st.Capabilities, observe(dev, v1.CapLauncherPersistsReboot, "", v1.CapSupported, l.Activation, now))
+				} else {
+					st.Capabilities = append(st.Capabilities, observe(dev, v1.CapLauncherPersistsReboot, "", v1.CapUnsupported,
+						"after reboot HOME resolved to "+home, now))
+				}
+			}
+		}
 	}
 
 	var errs []string
@@ -72,6 +94,13 @@ func reconcileDevice(ctx context.Context, dev tv.Device, a v1.DeviceAssignment, 
 			ok, err := ensureActivation(ctx, dev, l)
 			if err != nil {
 				errs = append(errs, err.Error())
+			}
+			switch {
+			case !activates(l):
+			case ok:
+				st.Capabilities = append(st.Capabilities, observe(dev, v1.CapCustomLauncher, "", v1.CapSupported, l.Activation, now))
+			case errors.Is(err, errActivationIneffective):
+				st.Capabilities = append(st.Capabilities, observe(dev, v1.CapCustomLauncher, "", v1.CapUnsupported, err.Error(), now))
 			}
 			st.Conditions = append(st.Conditions, cond("LauncherActive", ok, l.Activation, errString(err)))
 			compliant = compliant && ok
@@ -122,8 +151,23 @@ func reconcileDevice(ctx context.Context, dev tv.Device, a v1.DeviceAssignment, 
 		compliant = compliant && ok
 	}
 
+	// ensurePackage records a version only after verifying an install, so a
+	// changed version means an install worked this pass.
+	for _, p := range managed {
+		if v, ok := versions[p]; ok && v != before[p] {
+			st.Capabilities = append(st.Capabilities, observe(dev, v1.CapRemoteAppInstall, "", v1.CapSupported,
+				fmt.Sprintf("installed %s v%d", p, v), now))
+			break
+		}
+	}
+
 	if final, err := dev.PackageVersions(ctx, managed); err == nil {
 		st.Packages = final
+	}
+	if infoErr == nil {
+		// Read last, so HOME reflects this pass's activation.
+		home, _ := dev.HomeActivity(ctx)
+		st.Facts = facts(dev, info, home)
 	}
 	st.Compliant = compliant
 	if len(errs) > 0 {
@@ -267,9 +311,19 @@ func ensureActivation(ctx context.Context, dev tv.Device, l *v1.LauncherSpec) (b
 		return false, err
 	}
 	if !strings.HasPrefix(home, l.PackageName+"/") {
-		return false, fmt.Errorf("activation %q did not take effect: HOME resolves to %s", l.Activation, home)
+		return false, fmt.Errorf("%w: activation %q, HOME resolves to %s", errActivationIneffective, l.Activation, home)
 	}
 	return true, nil
+}
+
+// errActivationIneffective: every activation command succeeded, yet HOME
+// still resolves elsewhere. The TV is reachable and accepted the commands, so
+// this is evidence that the strategy does not work on this firmware.
+var errActivationIneffective = errors.New("activation did not take effect")
+
+// activates reports whether l asks for the launcher to become HOME.
+func activates(l *v1.LauncherSpec) bool {
+	return l.Activation == v1.ActivationHomeActivity || l.Activation == v1.ActivationDisableStock
 }
 
 func cond(t string, ok bool, reason, msg string) v1.Condition {

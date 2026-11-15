@@ -20,6 +20,11 @@ var (
 	// ErrDowngrade: the TV refused an install because the installed version is
 	// newer. The agent never downgrades (see Device.Install).
 	ErrDowngrade = errors.New("install refused: version downgrade")
+	// ErrRefused: the TV answered and refused the command (for example `pm
+	// clear` printing a failure instead of Success). Retrying the same
+	// command on the same firmware is not expected to help, unlike
+	// ErrUnreachable.
+	ErrRefused = errors.New("tv refused the command")
 )
 
 type Info struct {
@@ -42,6 +47,10 @@ type APK struct {
 // There is intentionally no generic Shell method on this interface.
 type Device interface {
 	Address() string
+	// Driver names how the agent talks to this TV (v1.DriverAndroidADB or
+	// v1.DriverSimulator). It decides whether observations are reported as
+	// hardware-verified or simulated.
+	Driver() string
 	Connect(ctx context.Context) error
 	Info(ctx context.Context) (Info, error)
 	// PackageVersions returns versionCode for each installed package in pkgs.
