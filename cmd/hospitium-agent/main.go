@@ -28,6 +28,7 @@ import (
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/agent"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/claim"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/client"
+	"github.com/spectrum-labs-tech/hospitium-agent/internal/discover"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/local"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/state"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/tv"
@@ -176,6 +177,10 @@ func run(ctx context.Context, args []string) error {
 		log.WarnContext(ctx, "SIMULATION MODE: no real TVs are being managed")
 	} else {
 		a.Dial = tv.NewADBDialer(*adb)
+		if *localFile == "" {
+			// Propose the TVs on this network to the owner (managed mode only).
+			a.Discover = func(ctx context.Context) ([]v1.DiscoveredTV, error) { return discover.Browse(ctx, 2*time.Second) }
+		}
 	}
 
 	log.InfoContext(ctx, "hospitium-agent starting", "version", version, "desired_state", target)

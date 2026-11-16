@@ -40,11 +40,17 @@ type Agent struct {
 	Log      *slog.Logger
 	// AfterTick is called after each tick (used by --simulate to persist TVs).
 	AfterTick func()
+	// Discover finds TVs on the network to propose to the owner (nil: don't). It runs at most every
+	// DiscoverEvery (default 5 minutes), and its latest result goes into every status report.
+	Discover      func(ctx context.Context) ([]v1.DiscoveredTV, error)
+	DiscoverEvery time.Duration
 
 	ops          opLog
 	devs         map[int64]*deviceState
 	pollFailures int
 	started      time.Time
+	discovered   []v1.DiscoveredTV
+	discoveredAt time.Time
 }
 
 type deviceState struct {
@@ -191,6 +197,7 @@ func (a *Agent) Tick(ctx context.Context) time.Duration {
 			AgentVersion: a.Version, Hostname: a.Hostname,
 			UptimeSeconds: int64(a.Now().Sub(a.started).Seconds()),
 			MemAllocBytes: ms.Alloc, Devices: statuses,
+			Discovered: a.discover(ctx),
 		}
 		if err := a.API.ReportStatus(ctx, rep); err != nil {
 			a.Log.WarnContext(ctx, "report status", "err", err)
@@ -300,4 +307,31 @@ func backoff(failures int) time.Duration {
 
 func jitter(d time.Duration) time.Duration {
 	return time.Duration(float64(d) * (0.8 + 0.4*rand.Float64())) //nolint:gosec // jitter, not security
+}
+
+// discover refreshes the TVs seen on the network when they're older than DiscoverEvery. A failed
+// browse keeps the previous result rather than reporting that every TV vanished.
+func (a *Agent) discover(ctx context.Context) []v1.DiscoveredTV {
+	if a.Discover == nil {
+		return nil
+	}
+	every := a.DiscoverEvery
+	if every == 0 {
+		every = 5 * time.Minute
+	}
+	now := a.Now()
+	if !a.discoveredAt.IsZero() && now.Sub(a.discoveredAt) < every {
+		return a.discovered
+	}
+	a.discoveredAt = now
+	found, err := a.Discover(ctx)
+	if err != nil {
+		a.Log.WarnContext(ctx, "discover tvs", "err", err)
+		return a.discovered
+	}
+	if len(found) != len(a.discovered) {
+		a.Log.InfoContext(ctx, "tvs seen on the network", "count", len(found))
+	}
+	a.discovered = found
+	return found
 }

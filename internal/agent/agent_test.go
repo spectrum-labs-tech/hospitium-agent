@@ -436,3 +436,40 @@ func countPrefix(s []string, p string) int {
 	}
 	return n
 }
+
+func TestReportsDiscoveredTVs(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	calls := 0
+	seen := []v1.DiscoveredTV{{Key: "cast:1", Name: "Living Room TV", Address: "10.0.50.30", Services: []string{v1.ServiceCast}}}
+	h.agent.Discover = func(context.Context) ([]v1.DiscoveredTV, error) {
+		calls++
+		if calls == 3 {
+			return nil, errors.New("network is down")
+		}
+		return seen, nil
+	}
+	h.agent.DiscoverEvery = 5 * time.Minute
+	ctx := context.Background()
+
+	h.agent.Tick(ctx)
+	h.now = h.now.Add(time.Minute)
+	h.agent.Tick(ctx)
+	if calls != 1 {
+		t.Fatalf("browsed %d times within the interval", calls)
+	}
+	h.now = h.now.Add(5 * time.Minute)
+	h.agent.Tick(ctx) // browses again
+	h.now = h.now.Add(5 * time.Minute)
+	h.agent.Tick(ctx) // browse fails: keep the last result
+	if calls != 3 {
+		t.Fatalf("browsed %d times", calls)
+	}
+	h.api.mu.Lock()
+	defer h.api.mu.Unlock()
+	for i, st := range h.api.statuses {
+		if len(st.Discovered) != 1 || st.Discovered[0].Key != "cast:1" {
+			t.Fatalf("report %d discovered: %+v", i, st.Discovered)
+		}
+	}
+}

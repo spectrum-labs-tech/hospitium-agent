@@ -66,6 +66,8 @@ To make systemd use it, add `--local /var/lib/hospitium-agent/desired.json` to `
 2. Tell the hub where its control plane is: `sudo mkdir -p /etc/hospitium-agent && echo HOSPITIUM_SERVER=https://hospitium.example.com | sudo tee /etc/hospitium-agent/agent.env`, then `sudo systemctl enable --now hospitium-agent`. Until it's claimed, the hub checks in every 30 seconds or so and logs its code.
 3. In the control plane, add the hub by its code and choose the property. The hub picks up its credential on its next check and carries on as a managed hub.
 
+Once claimed, the hub looks for TVs on its network every 5 minutes (mDNS: Cast and Android wireless debugging adverts) and reports them, so the control plane can offer them to you to add, without typing IP addresses. Nothing is managed until you add it. The TVs must be on the same network segment as the hub for it to see them. Speakers and other Cast devices without a screen are left out.
+
 To reset a hub (to give it to someone else, or if someone else claimed it first), stop the service and delete its state directory. It makes a new secret, and so a new code.
 
 ## Managed mode: enroll with a token
