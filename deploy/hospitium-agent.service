@@ -12,6 +12,8 @@ Group=hospitium
 # TVs do not prompt again after restarts or OS upgrades.
 Environment=HOME=/var/lib/hospitium-agent
 Environment=HOSPITIUM_AGENT_STATE_DIR=/var/lib/hospitium-agent
+# HOSPITIUM_SERVER=https://... : an unenrolled hub waits there to be claimed by its code.
+EnvironmentFile=-/etc/hospitium-agent/agent.env
 ExecStart=/usr/local/bin/hospitium-agent run --adb /usr/bin/adb
 Restart=always
 RestartSec=10

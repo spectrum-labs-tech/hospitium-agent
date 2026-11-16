@@ -6,6 +6,7 @@
 //	hospitium-agent run
 //	hospitium-agent run --local /etc/hospitium-agent/desired.json   (standalone, no control plane)
 //	hospitium-agent check --tv 10.0.50.21:5555 [--launcher-apk ... --reboots 5 --clear com.netflix.ninja --yes]
+//	hospitium-agent claim-code   (prints the code for the hub's label)
 //	hospitium-agent version
 package main
 
@@ -13,6 +14,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -24,6 +26,7 @@ import (
 	v1 "github.com/spectrum-labs-tech/hospitium-protocol/v1"
 
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/agent"
+	"github.com/spectrum-labs-tech/hospitium-agent/internal/claim"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/client"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/local"
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/state"
@@ -49,6 +52,8 @@ func main() {
 		err = run(ctx, os.Args[2:])
 	case "check":
 		err = checkTV(ctx, os.Args[2:], os.Stdout)
+	case "claim-code":
+		err = claimCode(os.Args[2:], os.Stdout)
 	case "version":
 		fmt.Println(version)
 	default:
@@ -62,7 +67,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: hospitium-agent enroll|run|check|version [flags]")
+	fmt.Fprintln(os.Stderr, "usage: hospitium-agent enroll|run|check|claim-code|version [flags]")
 	os.Exit(2)
 }
 
@@ -115,6 +120,7 @@ func run(ctx context.Context, args []string) error {
 	once := fs.Bool("once", false, "run a single reconcile pass and exit")
 	debug := fs.Bool("debug", false, "debug logging")
 	localFile := fs.String("local", "", "standalone mode: read desired state from this JSON file instead of a control plane")
+	server := fs.String("server", os.Getenv("HOSPITIUM_SERVER"), "control plane URL; an unenrolled hub waits there to be claimed by its code")
 	_ = fs.Parse(args) // ExitOnError
 
 	lvl := slog.LevelInfo
@@ -139,7 +145,10 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("not enrolled: run `hospitium-agent enroll` first, or use --local for standalone mode")
+			// Not enrolled: wait for the owner to claim this hub by its code (ADR 0017 in the control plane).
+			if creds, err = claimHub(ctx, sd, *server, log); err != nil {
+				return err
+			}
 		}
 		c = client.New(creds.ServerURL, creds.AgentToken, version)
 		api = c
@@ -183,4 +192,47 @@ func hardwareModel() string {
 		return ""
 	}
 	return strings.TrimRight(string(b), "\x00\n")
+}
+
+// claimHub waits until an owner claims this hub by its code, then saves its credential.
+func claimHub(ctx context.Context, sd state.Dir, server string, log *slog.Logger) (state.Credentials, error) {
+	if server == "" {
+		return state.Credentials{}, claim.ErrNoServer
+	}
+	if !strings.HasPrefix(server, "https://") && !isLocal(server) {
+		return state.Credentials{}, fmt.Errorf("refusing non-HTTPS control plane %q", server)
+	}
+	secret, err := claim.Secret(sd)
+	if err != nil {
+		return state.Credentials{}, err
+	}
+	host, _ := os.Hostname()
+	res, err := claim.Wait(ctx, client.New(server, "", version), secret,
+		v1.ClaimRequest{Hostname: host, AgentVersion: version, Hardware: hardwareModel()}, log, claim.Sleep)
+	if err != nil {
+		return state.Credentials{}, err
+	}
+	creds := state.Credentials{ServerURL: server, ControllerID: res.ControllerID, PropertyID: res.PropertyID, AgentToken: res.AgentToken}
+	if err := sd.Save(state.CredentialsFile, creds); err != nil {
+		return state.Credentials{}, err
+	}
+	log.InfoContext(ctx, "claimed", "controller", res.ControllerID, "property", res.PropertyID)
+	return creds, nil
+}
+
+// claimCode prints the hub's claim code (creating its secret on first use), for its label.
+func claimCode(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("claim-code", flag.ContinueOnError)
+	dir := fs.String("state-dir", defaultStateDir(), "state directory")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	code, err := claim.Code(state.Dir(*dir))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Claim code: %s\n", code)
+	fmt.Fprintln(out, "Put it on the hub's label, inside the case or on the packaging: anyone who sees it could claim the hub first.")
+	fmt.Fprintln(out, "The QR code on the label holds the same text.")
+	return nil
 }

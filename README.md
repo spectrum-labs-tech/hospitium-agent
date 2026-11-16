@@ -60,7 +60,18 @@ sudo -u hospitium HOSPITIUM_AGENT_STATE_DIR=/var/lib/hospitium-agent   hospitium
 
 To make systemd use it, add `--local /var/lib/hospitium-agent/desired.json` to `ExecStart` in the unit. Observed state is written to `status.json` in the state directory after every pass. Bump a device's `generation` when you change its spec, so `status.json` shows when the TV has caught up. One-time operations need a control plane.
 
-## Managed mode: enroll and provision
+## Managed mode: claim the hub by its code
+
+1. Print the hub's claim code for its label: `sudo -u hospitium HOSPITIUM_AGENT_STATE_DIR=/var/lib/hospitium-agent hospitium-agent claim-code`. Put the label inside the case or on the packaging: anyone who sees the code could claim the hub before you.
+2. Tell the hub where its control plane is: `sudo mkdir -p /etc/hospitium-agent && echo HOSPITIUM_SERVER=https://hospitium.example.com | sudo tee /etc/hospitium-agent/agent.env`, then `sudo systemctl enable --now hospitium-agent`. Until it's claimed, the hub checks in every 30 seconds or so and logs its code.
+3. In the control plane, add the hub by its code and choose the property. The hub picks up its credential on its next check and carries on as a managed hub.
+
+To reset a hub (to give it to someone else, or if someone else claimed it first), stop the service and delete its state directory. It makes a new secret, and so a new code.
+
+## Managed mode: enroll with a token
+
+For a hub without a label, an enrollment token works too.
+
 
 1. In the control plane, create a controller for the property. The response includes a **single-use enrollment token**, valid for 24 hours.
 2. On the Pi:
@@ -89,7 +100,8 @@ To make systemd use it, add `--local /var/lib/hospitium-agent/desired.json` to `
 
 ```
 hospitium-agent enroll --server URL --token TOKEN [--state-dir DIR]
-hospitium-agent run [--local FILE] [--adb PATH] [--interval 45s] [--once] [--simulate] [--debug]
+hospitium-agent claim-code [--state-dir DIR]
+hospitium-agent run [--server URL] [--local FILE] [--adb PATH] [--interval 45s] [--once] [--simulate] [--debug]
 hospitium-agent check --tv HOST:PORT [--launcher-apk FILE] [--strategy auto] [--reboots N] [--clear PKG,PKG] [--out FILE] [--yes]
 hospitium-agent version
 ```

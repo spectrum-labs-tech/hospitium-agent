@@ -75,3 +75,18 @@ func TestCheckRejectsTooManyReboots(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestClaimCodePrintsAStableCode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	var a, b bytes.Buffer
+	if err := claimCode([]string{"--state-dir", dir}, &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := claimCode([]string{"--state-dir", dir}, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(a.String(), "Claim code: ") || a.String() != b.String() {
+		t.Fatalf("output:\n%s\n%s", a.String(), b.String())
+	}
+}

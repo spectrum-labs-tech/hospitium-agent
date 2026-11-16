@@ -141,3 +141,38 @@ func (c *Client) Download(ctx context.Context, rawURL, wantSHA256, dst string) e
 	}
 	return os.Rename(tmp, dst)
 }
+
+// Claim asks whether an owner has claimed this hub (protocol v0.4.0). It returns the credential
+// once claimed (200), or pending with when to ask again (202).
+func (c *Client) Claim(ctx context.Context, req v1.ClaimRequest) (v1.EnrollResponse, *v1.ClaimPending, error) {
+	var res v1.EnrollResponse
+	b, err := json.Marshal(req)
+	if err != nil {
+		return res, nil, err
+	}
+	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+v1.PathAgentClaim, bytes.NewReader(b))
+	if err != nil {
+		return res, nil, err
+	}
+	hr.Header.Set("User-Agent", c.UserAgent)
+	hr.Header.Set("Accept", "application/json")
+	hr.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(hr)
+	if err != nil {
+		return res, nil, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return res, nil, json.NewDecoder(resp.Body).Decode(&res)
+	case http.StatusAccepted:
+		var p v1.ClaimPending
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			return res, nil, err
+		}
+		return res, &p, nil
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return res, nil, &HTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+	}
+}
