@@ -139,7 +139,6 @@ func (rn *Runner) Run(ctx context.Context, dev tv.Device, o Options) Report {
 	}
 	rep := &Report{Address: dev.Address(), AgentVersion: rn.Version, StartedAt: rn.Now(), Observations: []v1.CapabilityObservation{}}
 	r := &run{Runner: rn, ctx: ctx, dev: dev, rep: rep}
-	defer func() { rep.FinishedAt = rn.Now() }()
 
 	if !r.step("connect", r.connect) {
 		rep.Manual = manualChecks(o, false)
@@ -161,6 +160,9 @@ func (rn *Runner) Run(ctx context.Context, dev tv.Device, o Options) Report {
 	}
 	r.facts()
 	rep.Manual = manualChecks(o, active)
+	// Set before the copy is returned: a deferred assignment would run after it, leaving the
+	// report's FinishedAt zero.
+	rep.FinishedAt = rn.Now()
 	return *rep
 }
 

@@ -67,6 +67,10 @@ func TestFullCheckOnACooperativeTV(t *testing.T) {
 	if got[v1.CapCustomLauncher+"/"].Detail != v1.ActivationHomeActivity {
 		t.Fatalf("auto should succeed with home_activity first: %+v", got[v1.CapCustomLauncher+"/"])
 	}
+	// Two reboots on the fake clock take time; the report must say how long, not a zero end time.
+	if took := rep.FinishedAt.Sub(rep.StartedAt); took <= 0 {
+		t.Fatalf("FinishedAt %v is not after StartedAt %v", rep.FinishedAt, rep.StartedAt)
+	}
 	if sim.Snapshot().Boots != 2 {
 		t.Fatalf("expected 2 reboots, got %d", sim.Snapshot().Boots)
 	}
