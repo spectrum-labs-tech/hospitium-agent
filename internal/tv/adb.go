@@ -5,6 +5,7 @@ package tv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -278,4 +279,62 @@ func (a *ADB) Diagnostics(ctx context.Context) (map[string]string, error) {
 		res[k] = out
 	}
 	return res, nil
+}
+
+func (a *ADB) Awake(ctx context.Context) (bool, error) {
+	out, err := a.shell(ctx, "dumpsys", "power")
+	if err != nil {
+		return false, err
+	}
+	return parseWakefulness(out)
+}
+
+// parseWakefulness reads `dumpsys power`: mWakefulness is Awake, Asleep, Dreaming or Dozing.
+func parseWakefulness(out string) (bool, error) {
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "mWakefulness="); ok {
+			return strings.TrimSpace(v) == "Awake", nil
+		}
+	}
+	return false, errors.New("dumpsys power: no mWakefulness")
+}
+
+func (a *ADB) Foreground(ctx context.Context) (string, error) {
+	out, err := a.shell(ctx, "dumpsys", "window")
+	if err != nil {
+		return "", err
+	}
+	return parseFocus(out)
+}
+
+// parseFocus reads the focused window's package from `dumpsys window`, e.g.
+// "mCurrentFocus=Window{81bca78 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity_vNext}".
+func parseFocus(out string) (string, error) {
+	for _, line := range strings.Split(out, "\n") {
+		v, ok := strings.CutPrefix(strings.TrimSpace(line), "mCurrentFocus=")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(strings.Trim(v, "}"))
+		if len(fields) == 0 || fields[len(fields)-1] == "null" {
+			return "", nil
+		}
+		return pkgOf(fields[len(fields)-1]), nil
+	}
+	return "", errors.New("dumpsys window: no mCurrentFocus")
+}
+
+func (a *ADB) StartActivity(ctx context.Context, component, boolExtra string) error {
+	args := []string{"am", "start", "-n", component}
+	if boolExtra != "" {
+		args = append(args, "--ez", boolExtra, "true")
+	}
+	out, err := a.shell(ctx, args...)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(out, "Error") {
+		return fmt.Errorf("am start: %s", out)
+	}
+	return nil
 }

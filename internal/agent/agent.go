@@ -44,6 +44,10 @@ type Agent struct {
 	// DiscoverEvery (default 5 minutes), and its latest result goes into every status report.
 	Discover      func(ctx context.Context) ([]v1.DiscoveredTV, error)
 	DiscoverEvery time.Duration
+	// WakePoll is how often TVs that want the guestbook on wake are checked (default 3s), and
+	// WakeSettle how long a wake is given before looking at the screen (default 2s; negative: none).
+	WakePoll   time.Duration
+	WakeSettle time.Duration
 
 	ops          opLog
 	devs         map[int64]*deviceState
@@ -51,6 +55,7 @@ type Agent struct {
 	started      time.Time
 	discovered   []v1.DiscoveredTV
 	discoveredAt time.Time
+	wake         wakeWatch
 }
 
 type deviceState struct {
@@ -103,6 +108,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err := a.init(); err != nil {
 		return err
 	}
+	go a.watchWake(ctx)
 	for {
 		wait := a.Tick(ctx)
 		select {
@@ -146,6 +152,7 @@ func (a *Agent) Tick(ctx context.Context) time.Duration {
 	for _, d := range desired.Devices {
 		byID[d.DeviceID] = d
 	}
+	a.setWakeTargets(desired.Devices)
 
 	skip := map[int64]bool{}
 	if online {

@@ -73,6 +73,13 @@ type Device interface {
 	VerifyCleared(ctx context.Context, pkg string) (map[string]string, error)
 	Reboot(ctx context.Context) error
 	Diagnostics(ctx context.Context) (map[string]string, error)
+	// Awake reports whether the TV is on (not asleep or dreaming).
+	Awake(ctx context.Context) (bool, error)
+	// Foreground returns the package of the app on screen.
+	Foreground(ctx context.Context) (string, error)
+	// StartActivity brings an activity to the front with a boolean intent extra set (empty: none).
+	// The agent uses it only to bring up the launcher.
+	StartActivity(ctx context.Context, component, boolExtra string) error
 }
 
 // Dialer returns a Device handle for an ADB address.

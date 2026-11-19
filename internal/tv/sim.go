@@ -41,6 +41,11 @@ type SimState struct {
 	HomeOverride string            `json:"home_override"`
 	AppData      map[string]bool   `json:"app_data"` // package -> has signed-in data
 	Boots        int               `json:"boots"`
+	// Asleep: the screen is off. OnScreen is the package on screen; empty means the home screen.
+	Asleep   bool   `json:"asleep,omitempty"`
+	OnScreen string `json:"on_screen,omitempty"`
+	// LastExtras records the extras the last StartActivity set.
+	LastExtras []string `json:"last_extras,omitempty"`
 }
 
 // Stock Google TV launcher (Chromecast with Google TV / Google TV Streamer).
@@ -186,21 +191,25 @@ func (s *SimTV) HomeActivity(ctx context.Context) (string, error) {
 	if err := s.call("home"); err != nil {
 		return "", err
 	}
+	return s.homeLocked(), nil
+}
+
+func (s *SimTV) homeLocked() string {
 	if s.HomeOverride != "" {
 		if _, ok := s.Packages[pkgOf(s.HomeOverride)]; ok && !s.Disabled[pkgOf(s.HomeOverride)] {
-			return s.HomeOverride, nil
+			return s.HomeOverride
 		}
 	}
 	if _, ok := s.Packages[SimStockLauncher]; ok && !s.Disabled[SimStockLauncher] {
-		return SimStockLauncher + "/.MainActivity", nil
+		return SimStockLauncher + "/.MainActivity"
 	}
 	// Stock launcher disabled: the only other HOME handler wins.
 	for p := range s.Packages {
 		if p != SimStockLauncher && !s.Disabled[p] && isLauncherPkg(p) {
-			return p + "/.MainActivity", nil
+			return p + "/.MainActivity"
 		}
 	}
-	return "android/com.android.internal.app.ResolverActivity", nil
+	return "android/com.android.internal.app.ResolverActivity"
 }
 
 // isLauncherPkg: in the simulator, any package with "launcher" in its name
@@ -359,4 +368,62 @@ func (f *SimFleet) Save() error {
 		return err
 	}
 	return os.WriteFile(f.path, b, 0o600)
+}
+
+func (s *SimTV) Awake(ctx context.Context) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.call("awake"); err != nil {
+		return false, err
+	}
+	return !s.Asleep, nil
+}
+
+func (s *SimTV) Foreground(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.call("foreground"); err != nil {
+		return "", err
+	}
+	if s.Asleep {
+		return "", nil
+	}
+	if s.OnScreen != "" {
+		return s.OnScreen, nil
+	}
+	return pkgOf(s.homeLocked()), nil
+}
+
+func (s *SimTV) StartActivity(ctx context.Context, component, boolExtra string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.call("start " + component); err != nil {
+		return err
+	}
+	if _, ok := s.Packages[pkgOf(component)]; !ok {
+		return fmt.Errorf("am start: activity %s does not exist", component)
+	}
+	s.OnScreen = pkgOf(component)
+	s.LastExtras = nil
+	if boolExtra != "" {
+		s.LastExtras = []string{boolExtra}
+	}
+	return nil
+}
+
+// SetAwake turns the simulated screen off or on. Waking returns to the home screen.
+func (s *SimTV) SetAwake(awake bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Asleep = !awake
+	if awake {
+		s.OnScreen = ""
+	}
+}
+
+// Open puts an app on screen, as a guest would.
+func (s *SimTV) Open(pkg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.OnScreen = pkg
 }
