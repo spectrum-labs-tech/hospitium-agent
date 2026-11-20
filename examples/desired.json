@@ -8,7 +8,7 @@
       "generation": 1,
       "spec": {
         "launcher": {
-          "package_name": "tech.spectrumlabs.hospitium.launcher",
+          "package_name": "tv.hospitium.launcher",
           "version_code": 1,
           "apk_url": "https://downloads.example/hospitium-launcher-1.apk",
           "sha256": "0000000000000000000000000000000000000000000000000000000000000000",

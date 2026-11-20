@@ -24,7 +24,7 @@ func checkTV(ctx context.Context, args []string, out io.Writer) error {
 	addr := fs.String("tv", "", "the TV's ADB address (host:port)")
 	adb := fs.String("adb", "adb", "path to the adb binary")
 	apk := fs.String("launcher-apk", "", "install and activate this launcher APK")
-	pkg := fs.String("launcher-package", "tech.spectrumlabs.hospitium.launcher", "the launcher's package name")
+	pkg := fs.String("launcher-package", "tv.hospitium.launcher", "the launcher's package name")
 	home := fs.String("home-activity", "", "the launcher's HOME component (default <package>/.MainActivity)")
 	strategy := fs.String("strategy", "auto", "activation: auto, home_activity or disable_stock")
 	stock := fs.String("stock-launchers", "com.google.android.apps.tv.launcherx", "comma-separated stock launcher packages (for disable_stock)")

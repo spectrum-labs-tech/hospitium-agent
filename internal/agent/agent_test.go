@@ -18,7 +18,7 @@ import (
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/tv"
 )
 
-const launcherPkg = "tech.spectrumlabs.hospitium.launcher"
+const launcherPkg = "tv.hospitium.launcher"
 
 type fakeAPI struct {
 	mu        sync.Mutex

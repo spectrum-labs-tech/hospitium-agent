@@ -13,7 +13,7 @@ import (
 	"github.com/spectrum-labs-tech/hospitium-agent/internal/tv"
 )
 
-const launcher = "tech.spectrumlabs.hospitium.launcher"
+const launcher = "tv.hospitium.launcher"
 
 // runner returns a Runner whose sleeps advance a fake clock instantly.
 func runner() *Runner {
