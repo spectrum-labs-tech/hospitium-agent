@@ -26,8 +26,8 @@ func TestParseWakefulness(t *testing.T) {
 func TestParseFocus(t *testing.T) {
 	t.Parallel()
 	for out, want := range map[string]string{
-		"  mCurrentFocus=Window{81bca78 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity_vNext}":                    "com.amazon.tv.launcher",
-		"  mCurrentFocus=Window{60aac6c u0 tv.hospitium.launcher/tv.hospitium.launcher.MainActivity}": "tv.hospitium.launcher",
+		"  mCurrentFocus=Window{81bca78 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity_vNext}": "com.amazon.tv.launcher",
+		"  mCurrentFocus=Window{60aac6c u0 tv.hospitium.launcher/tv.hospitium.launcher.MainActivity}":            "tv.hospitium.launcher",
 		"  mCurrentFocus=null": "",
 	} {
 		got, err := parseFocus(out)
